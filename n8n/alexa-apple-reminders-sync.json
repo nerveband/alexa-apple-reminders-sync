@@ -1,0 +1,359 @@
+{
+  "name": "Alexa and Apple Reminders two-way sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "name": "Every 2 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "17371168-b534-5fa5-98c9-2b9ddf39d7dc"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://reminders-sync:8787/sync",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 240000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "name": "Run sync",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "d69f6473-9383-5537-a31c-1c7fcc150482",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decide if this run needs an alert. Alerts are rate-limited so an outage does not spam you.\nconst FORM_URL = 'https://YOUR-N8N-DOMAIN/form/icloud-code';\nconst sd = $getWorkflowStaticData('global');\nconst r = $input.first().json;\nconst body = (r && typeof r.body === 'object' && r.body) ? r.body : r;\nconst status = r.statusCode || (r.error ? 0 : 200);\nconst errors = (body && Array.isArray(body.errors)) ? body.errors : (r.error ? [String(r.error.message || r.error)] : []);\nconst ok = status === 200 && errors.length === 0;\nconst needsCode = body && body.icloud === 'needs_2fa';\nsd.failStreak = ok ? 0 : (sd.failStreak || 0) + 1;\nlet alert = '';\nif (needsCode) {\n  if (Date.now() - (sd.lastCodeAlert || 0) > 6 * 3600000) {\n    sd.lastCodeAlert = Date.now();\n    alert = 'Reminders sync: Apple needs a new verification code. Open ' + FORM_URL + ' and follow the steps.';\n  }\n} else if (!ok && (sd.failStreak === 5 || (sd.failStreak > 5 && sd.failStreak % 180 === 0))) {\n  alert = 'Reminders sync has failed ' + sd.failStreak + ' runs in a row: ' + errors.join(' | ').slice(0, 400);\n}\nif (ok) sd.lastCodeAlert = 0;\nreturn [{ json: { ok, alert, result: body } }];\n"
+      },
+      "name": "Check result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "cd0ff327-8e96-5ec6-9fa9-504092262179"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Alert needed?",
+              "leftValue": "={{ $json.alert }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Alert needed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "27aeb16a-8197-56de-a644-59f9761461fb"
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ $json.alert }}"
+      },
+      "name": "Send alert",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        880,
+        -20
+      ],
+      "id": "25d84ad2-1440-566a-a784-810c1080d9f9"
+    },
+    {
+      "parameters": {
+        "formTitle": "Reconnect iCloud for reminders sync",
+        "formDescription": "Leave the box empty and press Submit to get a new code on your Apple devices. Then open this page again and type the 6-digit code.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Verification code",
+              "placeholder": "123456"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "path": "icloud-code"
+        }
+      },
+      "name": "iCloud code form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        340
+      ],
+      "id": "a1a548f7-a540-560f-9a38-0dee7714d12b",
+      "webhookId": "9a051eee-1a24-536a-bb0a-f3319f4e2ab1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Code typed?",
+              "leftValue": "={{ $json['Verification code'] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Code typed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        220,
+        340
+      ],
+      "id": "0b41031c-2c31-5c89-afe4-16f5d88840db"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://reminders-sync:8787/icloud/2fa",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 240000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ code: $json['Verification code'] }) }}"
+      },
+      "name": "Send code to server",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        260
+      ],
+      "id": "7513f314-c1e6-5ceb-bea7-cc930bfb5cfc",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://reminders-sync:8787/icloud/login",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 240000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "name": "Ask Apple for a new code",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        440
+      ],
+      "id": "9e9ec2e7-a590-58c0-9af2-a22326e8bb28",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "={{ $json.body && $json.body.ok ? 'Connected' : 'That did not work' }}",
+        "completionMessage": "={{ $json.body && $json.body.ok ? 'iCloud is connected again. You can close this page.' : 'The code was not accepted. Leave the box empty to get a new code, then try again.' }}"
+      },
+      "name": "Show code result",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        660,
+        260
+      ],
+      "id": "1b542e46-824d-5cdb-b2d7-3e21b77f050c"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "={{ $json.body && $json.body.status === 'ok' ? 'Already connected' : 'Check your Apple devices' }}",
+        "completionMessage": "={{ $json.body && $json.body.status === 'ok' ? 'iCloud is already connected. Nothing to do.' : 'Apple sent a new code. Open this page again and type it in.' }}"
+      },
+      "name": "Show new code result",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        660,
+        440
+      ],
+      "id": "eee5a171-26c7-5c1c-8564-5b2a010df9cd"
+    }
+  ],
+  "connections": {
+    "Every 2 minutes": {
+      "main": [
+        [
+          {
+            "node": "Run sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run sync": {
+      "main": [
+        [
+          {
+            "node": "Check result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check result": {
+      "main": [
+        [
+          {
+            "node": "Alert needed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert needed?": {
+      "main": [
+        [
+          {
+            "node": "Send alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "iCloud code form": {
+      "main": [
+        [
+          {
+            "node": "Code typed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code typed?": {
+      "main": [
+        [
+          {
+            "node": "Send code to server",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ask Apple for a new code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send code to server": {
+      "main": [
+        [
+          {
+            "node": "Show code result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Apple for a new code": {
+      "main": [
+        [
+          {
+            "node": "Show new code result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none"
+  }
+}
