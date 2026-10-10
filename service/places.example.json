@@ -1,0 +1,11 @@
+{
+  "home": {"name": "Home", "address": "123 Main St, Springfield, CA", "lat": 32.7157, "lon": -117.1611},
+  "places": [
+    {"name": "Costco", "address": "100 Example Pkwy, Springfield, CA", "lat": 32.7700, "lon": -117.0200, "radius": 250,
+     "sections": ["Costco"], "aliases": ["costco wholesale"]},
+    {"name": "Target", "address": "200 Example Rd, Springfield, CA", "lat": 32.7380, "lon": -116.9380, "radius": 200,
+     "sections": ["Walmart/Target"]},
+    {"name": "Walmart", "address": "300 Example Dr, Springfield, CA", "lat": 32.7770, "lon": -117.0090, "radius": 200,
+     "sections": ["Walmart/Target"]}
+  ]
+}
